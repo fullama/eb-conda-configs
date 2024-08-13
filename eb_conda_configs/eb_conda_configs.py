@@ -10,11 +10,10 @@ Will create the easybuild config files samtools-1.9.eb, trimmomatic-0.39.eb and 
     python ./create_eb_configs_from_conda_packages.py bundle -n qc -v 1.0 -m trimmomatic=0.39 fastqc=0.11.8
 """
 
-from binstar_client.utils import get_server_api, parse_specs
+import yaml
+import requests
 import argparse
 from jinja2 import Environment, BaseLoader
-
-aserver_api = get_server_api()
 
 
 def write_eb_bundle_config(name, version, dependencies):
@@ -25,7 +24,7 @@ version = '{{version}}'
 #Change the homepage!
 homepage = 'none'
 description = """Module for {{name}}"""
-toolchain = SYSTEM 
+toolchain = SYSTEM
 dependencies = [
     {%- for i in dependencies %}
          ('{{i.name}}', '{{i.version}}'),
@@ -106,24 +105,15 @@ moduleclass = 'bio'
 
 
 def get_package_data(package):
-    specs = parse_specs(package)
-
-    if not specs._package:
-        raise Exception('You did not specify a package!')
-
-    package_data = aserver_api.package(specs.user, specs.package)
-    latest_version = package_data['latest_version']
-    summary = package_data['summary']
-    if specs.user == 'bioconda':
-        homepage = 'https://bioconda.github.io/recipes/{}/README.html'.format(specs.package)
-    else:
-        homepage = 'homepage'
-
-    version = latest_version
-    if specs._version:
-        version = specs.version
-
-    return specs.package, version, homepage, summary
+    url = f'https://raw.githubusercontent.com/bioconda/bioconda-recipes/master/recipes/{package}/meta.yaml'
+    # Fetch content from the URL
+    response = requests.get(url)
+    yaml_content = response.text
+    yaml_content = yaml_content.replace('{% set ', '').replace(' %}', '').replace(' = ', ': ')
+    yaml_content = '\n'.join([x for x in yaml_content.split('\n') if '{{' not in x])
+    # Parse YAML content into a dictionary
+    data = yaml.load(yaml_content, Loader=yaml.SafeLoader)
+    return data['name'], data.get('version', 'None'), data.get('about', {}).get('home', 'None'), data.get('about', {}).get('summary', 'None')
 
 
 def bundle(**kwargs):
